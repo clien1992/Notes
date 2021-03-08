@@ -63,7 +63,7 @@
 
 ​		比如说，像中央仓库在国外，很慢的，直接从中央仓库下载的话，是**很慢的**，所以一般国内的一些大型的互联网公司，**阿里云**，会搞一个**镜像仓库**，完全跟中央仓库**一模一样**的，代理了中央仓库所有的请求。你可以直接从阿里云镜像仓库去请求，如果有就直接返回了，国内网络的速度很快的，上百倍；阿里云如果自己没有，就会去从国外的中央仓库去下载。
 
-##  2.6 搭建私服
+##  2.6 搭建私服Nexus
 
 ### 		2.6.1 下载
 
@@ -204,7 +204,116 @@
 		<mirrorOf>*</mirrorOf>
 		<url>http://localhost:8081/nexus/content/groups/public</url>	//这里配置我们私服的仓库组
 	</mirror>
-</mirros>
+</mirros>	
 ```
 
-​	
+### 2.6.8 如何将自己的jar包上传到私服
+
+​	nexus私服默认就是可以读的，不需要认证，公司局域网内的人都可以去配置之后拉取依赖。但是如果下一讲要进行部署的话，我们是需要有一个专用的部署账号，通过账号认证，才能部署发布包到nexus私服的。
+
+​	nexus的权限是典型的RBAC模型，role-based access control。每个用户可以分配多个角色，每个角色分配多个权限，每个权限就是一个具体的功能，比如浏览依赖，部署发布包，等等。
+
+#### 	2.6.8.1 设置权限
+
+​		nexus默认有三个用户：
+​			admin：管理员账号，密码是admin123
+​			anonymous：如果没有给认证信息，就是这个匿名账号，可以下载依赖，查看依赖。**nexus没有登录默认是这个账号**
+​			deployment：可以搜索和部署构建，就是普通的开发账号，密码是deployment123（在nexus 3.x最新版本里已经被消除掉了）
+
+##### 		2.6.8.1.1 页面配置deployment	
+
+​			我们光是有admin和匿名账号是不够的，我们需要创建一个专门用来部署的账号，deployment：
+
+​				（1）涵盖所有匿名账号的权限，至少可以搜索仓库，下载依赖
+
+​				（2）对仓库有所有的管理权限，就可以往仓库中去部署发布包
+
+##### ![](topic/nexus权限页面.jpg)
+
+​			nexus默认的权限一般都够用了，所以我们只要设置角色和用户
+
+​	![](topic/创建角色.jpg)
+
+![](topic/创建用户.jpg)
+
+#### 2.6.8.2 配置自己的项目pom.xml
+
+​	配置开发版和发布版
+
+```
+<distributionManagement>
+	<repository>
+		<id> nexus-releases</id>
+		<name> Nexus Release Repository</name>
+		<url>http://localhost:8081/nexus/content/repositories/releases/</url>
+	</repository>
+	<snapshotRepository>
+		<id> nexus-snapshots</id>
+		<name> Nexus Snapshot Repository</name>
+		<url>http://localhost:8081/nexus/content/repositories/snapshots/</url>
+	</snapshotRepository>
+</distributionManagement>
+```
+
+#### 2.6.8.3 配置maven settings.xml的server
+
+nexus仓库对于普通的匿名用户是只读的，也就是说，只能下载依赖，不能部署发布包，因此如果要能够部署发布包，还需要在settings.xml文件里通过<server>元素配置使用专用的部署用户，来通过认证，进行发布包的部署。
+
+```
+<servers>
+	<server>
+		<id>nexus-releases</id>    				//对应上面的id
+		<username>deployment</username>
+		<password>deployment123</password>
+	</server>
+	<server>
+		<id>nexus-snapshots</id>				//对应上面的id
+		<username>deployment</username>
+		<password>deployment123</password>
+	</server>
+</servers>
+```
+
+#### 2.6.8.3 执行Maven deploy命令部署到私服
+
+​	最后执行mvn clean deploy命令即可上传到私服
+
+#### 2.6.8.4 对于第三方jar包手动上传
+
+##### 	2.6.8.4.1 配置server
+
+```
+<servers>
+	<server>
+		<id>nexus-releases</id>    				//对应上面的id
+		<username>deployment</username>
+		<password>deployment123</password>
+	</server>
+	<server>
+		<id>nexus-snapshots</id>				//对应上面的id
+		<username>deployment</username>
+		<password>deployment123</password>
+	</server>
+	//第三方jar配置
+	<server>
+		<id>nexus-3rd-party</id>
+		<username>deployment</username>
+		<password>deployment123</password>
+	</server>
+</servers>
+```
+
+##### 	2.6.8.4.2 cmd 手动上传
+
+```
+mvn deploy:deploy-file -DgroupId=com.csource -DartifactId=fastdfs-client-java -Dversion=1.24 -Dpackaging=jar -Dfile=F:\DevelopmentKit\fastdfs_client_v1.24.jar -Durl=http://localhost:8081/repository/3rd-party/ -DrepositoryId=nexus-3rd-party
+```
+
+### 2.6.9 配置一些日常定时器
+
+nexus提供一些平常的定时任务可供配置
+
+可选备份，压缩blob store,重建索引等
+
+![](topic/nexus定时任务界面.png)
+
